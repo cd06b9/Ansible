@@ -1,0 +1,75 @@
+------------
+**Ansible inventory配置：**
+
+```yaml
+#(1)服务安装ansible
+#yum -y install ansible
+#sed -i "s:#host_key_checking = False:host_key_checking = False:g"  /etc/ansible/ansible.cfg
+
+#(2) 创建一个hosts文件：touch ~/ansible_yml/hosts
+#hosts 文件格式：
+#[nodes]
+#192.168.[1:2].[0:254]
+#[nodes:vars]
+#ansible_user=root
+#ansible_ssh_pass=password
+#(3) 执行： ansible-playbook -i ~/ansible_yml/hosts ~/ansible_yml/zabbix_agent_install.yml
+[node]
+192.168.xx.xxx hostname=k8s-node1 ansible_ssh_user=root ansible_ssh_pass='xxxxxxx'
+192.168.xx.xxx hostname=k8s-node2 ansible_ssh_user=root ansible_ssh_pass='xxxxxxx'
+192.168.xx.xx hostname=k8s-node3 ansible_ssh_user=root ansible_ssh_pass='xxxxxxx'
+[anserver]
+192.168.xx.xx hostname=k8s-node0  ansible_ssh_user=root ansible_ssh_pass='xxxxxxx'
+
+```
+**Agent 部署脚本：**
+```yaml
+- hosts: all
+  tasks:
+  - name: Download zabbix-agent for 7
+    get_url:
+      url: http://192.168.xx.xxx/zabbix-agent-3.2.1-1.el7.x86_64.rpm
+      dest: /tmp/zabbix-agent-3.2.1-1.el7.x86_64.rpm
+      checksum: sha256:ba77dffa26627f315f811bbcce056209e7c9a3030d622bcad929d4c6b2ba7074
+      force: yes
+    when: ansible_distribution == "CentOS" and ansible_distribution_major_version == "7" 
+  - name: Download zabbix-agent for 6
+    get_url:
+      url: http://192.168.1xx.xxx/zabbix-agent-3.2.1-1.el6.x86_64.rpm
+      dest: /tmp/zabbix-agent-3.2.1-1.el6.x86_64.rpm
+      checksum: sha256:6bdb783eeda888d012a4c5625b51e37579f12ad0674df7d97b4f5296fada5e84
+    when: ansible_distribution == "CentOS" and ansible_distribution_major_version == "6" 
+  - name: Install zabbix-agent for 7
+    yum:
+      name: /tmp/zabbix-agent-3.2.1-1.el7.x86_64.rpm
+      state: present
+    when: ansible_distribution == "CentOS" and ansible_distribution_major_version == "7" 
+  - name: Install zabbix-agent for 6
+    yum:
+      name: /tmp/zabbix-agent-3.2.1-1.el6.x86_64.rpm
+      state: present
+    when: ansible_distribution == "CentOS" and ansible_distribution_major_version == "6" 
+  - name: Notify zabbix_agentd.conf "Server"
+    lineinfile:
+      dest: /etc/zabbix/zabbix_agentd.conf
+      regexp: 'Server=127.0.0.1'
+      line: 'Server=192.168.xx.xxx'
+  - name: Notify zabbix_agentd.conf "ServerActive"
+    lineinfile:
+      dest: /etc/zabbix/zabbix_agentd.conf
+      regexp: '^ServerActive='
+      line: 'ServerActive=192.168.xx.xxx'
+  - name: Notify zabbix_agentd.conf "Hostname"
+    lineinfile:
+      dest: /etc/zabbix/zabbix_agentd.conf
+      regexp: '^Hostname'
+      line: 'Hostname={{ item }}'
+    with_items:
+      - "{{ hostname }}"
+  - name: Zabbix-agent start
+    service:
+      name: zabbix-agent
+      state: restarted
+      enabled: yes
+
+
